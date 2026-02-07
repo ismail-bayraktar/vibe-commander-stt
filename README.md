@@ -1,72 +1,73 @@
-# VD Speech-to-Text
+<p align="center">
+  <img src="assets/vibe-commander.png" alt="Vibe Commander" width="180">
+</p>
 
-> Windows icin hafif, hizli, offline ses-yaziya donusturucu. Whisper AI ile Turkce ve Ingilizce destek.
+<h1 align="center">VD Speech-to-Text</h1>
 
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)](https://python.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Whisper](https://img.shields.io/badge/AI-Whisper-orange?logo=openai)](https://github.com/openai/whisper)
-[![Windows](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows)](https://www.microsoft.com/windows)
+<p align="center">
+  <b>Konus, yapistir. Bu kadar.</b><br>
+  <sub>Windows icin offline ses-yaziya donusturucu | Whisper AI</sub>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/AI-Whisper-orange?style=flat-square&logo=openai" />
+  <img src="https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square&logo=windows" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" />
+  <img src="https://img.shields.io/badge/RAM-~500MB-purple?style=flat-square" />
+</p>
 
 ---
 
 ## Ne Yapar?
 
-Konusursun, yazdigi yere yapistir. Bu kadar.
+Mouse yan tusuna bas → konus → birak → metin aninda yapistir.
 
-- **Yan tusa bas** → kayit baslar (pill kirmizi olur)
-- **Tekrar bas** → kayit durur, metin aninda yapistir (Ctrl+V)
 - **Tamamen offline** - internet gerektirmez
 - **~500 MB RAM** - arka planda sessizce calisir
-
-## Ozellikler
-
-| Ozellik | Detay |
-|---|---|
-| **AI Model** | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (INT8 CPU) - PyTorch gerektirmez |
-| **Diller** | Turkce, Ingilizce (sag tik ile degistir) |
-| **Tetikleyici** | Mouse yan tus, orta tik, veya klavye kisayolu |
-| **Arayuz** | Suruklenen minik pill - glassmorphism dark tema |
-| **Spektrum** | Kayit sirasinda canli ses dalgasi gorsellestirme |
-| **Terimler** | AI, ML, GPU gibi teknik terimleri dogru tanir |
-| **Otostart** | Windows ile otomatik baslat (sag tik menuden) |
-| **Yapistir** | Transkripsiyon aninda aktif pencereye Ctrl+V yapar |
+- **Turkce + Ingilizce** - sag tik ile degistir
+- **Teknik terimler** - AI, GPU, GitHub gibi kelimeleri dogru tanir
 
 ## Kurulum
 
-### Hizli (setup.bat)
-
 ```
-git clone https://github.com/user/vd-speech-to-text.git
-cd vd-speech-to-text
+git clone https://github.com/ismail-bayraktar/vibe-commander-stt.git
+cd vibe-commander-stt
 setup.bat
 ```
 
 `setup.bat` her seyi halleder: Python kontrolu, paket kurulumu, masaustu kisayolu.
 
-### Manuel
-
-```bash
-pip install -r requirements.txt
-python speech_to_text.py
-```
-
-**Gereksinimler:** Python 3.10+, Windows 10/11
+> Ilk acilista Whisper modeli indirilir (~250 MB, bir kere).
 
 ## Kullanim
 
-1. **Baslat**: Masaustu kisayolu veya `python speech_to_text.py`
-2. **Kayit**: Mouse yan tusa bas (veya ayarladigin kisayol)
-3. **Durdur**: Ayni tusa tekrar bas
-4. **Sonuc**: Metin otomatik yapistir
+| Aksiyon | Ne Olur |
+|---|---|
+| **Mouse yan tus** | Kayit baslar (pill kirmizi + spektrum) |
+| **Tekrar bas** | Kayit durur, metin yapistir |
+| **Surukle** | Pill'i ekranda tasir |
+| **Sag tik** | Ayarlar menusu |
 
 ### Sag Tik Menu
 
 - Turkce / English gecisi
 - Mikrofon secimi
 - Teknik terim listesi
-- Kisayol degistir
-- Windows ile baslat toggle
+- Kisayol degistir (mouse/klavye)
+- Windows ile otomatik baslat
 - Cikis
+
+## Ozellikler
+
+| Ozellik | Detay |
+|---|---|
+| **AI Model** | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) INT8 CPU - PyTorch gerektirmez |
+| **Arayuz** | Minik pill - glassmorphism dark, suruklenir |
+| **Spektrum** | Kayit sirasinda canli ses dalgasi gorsellestirme |
+| **Yapistir** | Transkripsiyon biter bitmez aktif pencereye Ctrl+V |
+| **VAD** | Sessizlik otomatik atlanir |
+| **Otostart** | Windows baslangicindan ac/kapa (sag tik menuden) |
 
 ## Yapilandirma
 
@@ -78,60 +79,34 @@ Ilk calistirmada `config.json` otomatik olusur:
   "language": "tr",
   "hotkey": "mouse_x1",
   "beam_size": 1,
-  "initial_prompt": "GTRL, RL, AI, ML, DQN, PPO..."
+  "initial_prompt": "AI, ML, GPU, GitHub..."
 }
 ```
 
-| Ayar | Aciklama | Varsayilan |
+| Model | RAM | Turkce Kalite |
 |---|---|---|
-| `model_size` | Whisper model boyutu (`tiny`, `base`, `small`, `medium`) | `small` |
-| `language` | Transkripsiyon dili | `tr` |
-| `hotkey` | Tetikleyici (`mouse_x1`, `mouse_middle`, `ctrl+shift+space`...) | `mouse_x1` |
-| `initial_prompt` | Teknik terimler (Whisper'a ipucu verir) | AI/ML terimleri |
-| `beam_size` | Whisper beam size (1=hizli, 5=kaliteli) | `1` |
+| `tiny` | ~150 MB | Orta |
+| `base` | ~250 MB | Iyi |
+| **`small`** | **~500 MB** | **Cok iyi** |
+| `medium` | ~1.5 GB | Mukemmel |
 
-## Model Boyutlari
+## Gereksinimler
 
-| Model | RAM | Hiz | Turkce Kalite |
-|---|---|---|---|
-| `tiny` | ~150 MB | Cok hizli | Orta |
-| `base` | ~250 MB | Hizli | Iyi |
-| **`small`** | **~500 MB** | **Normal** | **Cok iyi** |
-| `medium` | ~1.5 GB | Yavas | Mukemmel |
-
-> `small` cogu kullanim icin en iyi denge.
-
-## Teknik Detaylar
-
-- **Ses yakalama**: `sounddevice` (PortAudio) - 16kHz mono float32
-- **Transkripsiyon**: `faster-whisper` - CTranslate2 INT8 CPU, VAD filtresi
-- **GUI**: `tkinter` + `Pillow` - anti-aliased pill, 4x supersampled
-- **Hotkey**: `keyboard` + `pynput` - mouse/klavye destegi
-- **Yapistirma**: `pynput` Ctrl+V simulasyonu
-- **Thread modeli**: Ana (GUI) + Hotkey + Ses + Transkripsiyon
-
-## SSS
-
-**S: Bluetooth kulaklik mikrofonu kullanabilir miyim?**
-Teknik olarak evet, ama Windows BT mikrofon acildiginda ses profilini SCO'ya dusurur ve muzik kalitesi bozulur. Dahili mikrofon (Realtek) onerilir.
-
-**S: Maksimum kayit suresi?**
-Teknik limit yok. Pratik olarak 2-3 dakika ideal. Cok uzun kayitlarda RAM artar.
-
-**S: Neden bazen yanlis yapistirir?**
-Ctrl+V simulasyonu o an aktif olan pencereye gider. Kayit dururken imlecin dogru yerde oldugundan emin olun.
+- Windows 10/11
+- Python 3.10+
+- Mikrofon
 
 ## Katki
 
-PR'lar ve issue'lar memnuniyetle karsilanir! Turkce veya Ingilizce yazabilirsiniz.
+PR ve issue'lar memnuniyetle karsilanir.
 
 ## Lisans
 
-[MIT](LICENSE) - istediginiz gibi kullanin.
+[MIT](LICENSE)
 
 ---
 
 <p align="center">
-  <b>VD Speech-to-Text</b> - Konusarak yaz, klavyeye dokunma.<br>
-  <sub>Vibe Commander tarafindan gelistirildi</sub>
+  <sub>Vibe Commander tarafindan gelistirildi</sub><br>
+  <sub>Konusarak yaz, klavyeye dokunma.</sub>
 </p>

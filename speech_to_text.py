@@ -41,7 +41,7 @@ DEFAULT_CONFIG = {
     "beam_size": 1,
     "button_position": [100, 100],
     "button_size": 56,
-    "initial_prompt": "GTRL, RL, AI, ML, DQN, PPO, SAC, TD3, A2C, GPU, CPU, API, LLM, NLP, CNN, RNN, LSTM, GAN, VAE, transformer, epoch, batch, gradient, loss, reward, policy, agent, environment, state, action, observation",
+    "initial_prompt": "GTRL, RL, AI, ML, DQN, PPO, SAC, TD3, A2C, GPU, CPU, API, LLM, NLP, CNN, RNN, LSTM, GAN, VAE, transformer, epoch, batch, gradient, loss, reward, policy, agent, environment, state, action, observation, GitHub, repo, commit, push, pull, merge, branch, PR, README, open-source, pip, Python, npm, Docker, VSCode, Claude",
 }
 SAMPLE_RATE = 16000
 MIN_RECORDING_SECONDS = 0.5
