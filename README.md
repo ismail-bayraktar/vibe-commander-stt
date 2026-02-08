@@ -138,6 +138,39 @@ Ilk calistirmada `config.json` otomatik olusur:
 | `paste_method` | auto / ctrl_v / shift_insert |
 | `initial_prompt` | Teknik terimler ve dil ipucu |
 
+### Model Secimi
+
+`config.json` dosyasindaki `model_size` (CPU) ve `gpu_model_size` (GPU) degerlerini degistirerek farkli modeller kullanabilirsiniz. Daha kucuk model = daha az kaynak tuketimi, daha buyuk model = daha iyi kalite.
+
+**GPU modelleri** (`gpu_model_size`):
+
+| Model | VRAM | Hiz | Turkce Kalite | Kime Uygun |
+|---|---|---|---|---|
+| `tiny` | ~1 GB | Aninda | Dusuk | Hizli not alma, kisa cumleler |
+| `base` | ~1 GB | Cok hizli | Orta | Gunluk kullanim, hafif GPU |
+| `small` | ~1.5 GB | Hizli | Iyi | Dengeli secim |
+| `medium` | ~2.5 GB | Orta | Cok iyi | Kalite oncelikliyse |
+| **`large-v3`** | **~3 GB** | **Hizli** | **En iyi** | **Onerilen (RTX 3060+)** |
+
+**CPU modelleri** (`model_size`):
+
+| Model | RAM | Hiz | Turkce Kalite | Kime Uygun |
+|---|---|---|---|---|
+| `tiny` | ~150 MB | Hizli | Dusuk | Eski/zayif bilgisayar |
+| `base` | ~250 MB | Orta | Orta | 4 GB RAM sistemi |
+| **`small`** | **~500 MB** | **Orta** | **Iyi** | **Onerilen (GPU yoksa)** |
+| `medium` | ~1.5 GB | Yavas | Cok iyi | 8 GB+ RAM, sabir varsa |
+
+**Ornek**: Dusuk VRAM'li bir GPU icin `config.json`'da:
+```json
+{
+  "gpu_model_size": "small",
+  "model_size": "tiny"
+}
+```
+
+> Model degisikligi sonrasi uygulamayi yeniden baslatin. Yeni model ilk kullanmimda otomatik indirilir.
+
 ## Gereksinimler
 
 - Windows 10/11
