@@ -1,6 +1,6 @@
 """
-Speech-to-Text - Minimalist floating hub.
-Glassmorphism pill + ses dalgasi animasyonu.
+VD Speech-to-Text - Minimalist floating pill.
+Glassmorphism + ses dalgasi animasyonu.
 Konusmayi otomatik yapistir, hic yazi/bilgi yok.
 """
 
@@ -10,6 +10,7 @@ import math
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -19,10 +20,127 @@ from pathlib import Path
 import keyboard as kb_hotkey
 import numpy as np
 import sounddevice as sd
+from ctypes import wintypes
 from faster_whisper import WhisperModel
 from PIL import Image, ImageDraw, ImageFilter, ImageTk
 from pynput.keyboard import Key, Controller as KeyboardController
 from pynput import mouse as pynput_mouse
+import pystray
+
+
+def _log(msg):
+    """Terminal varsa logla, yoksa sessiz (pythonw)."""
+    try:
+        sys.stderr.write(msg + "\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
+# --- Yapistirma: pynput + Akilli Pencere Algilama ---
+
+_paste_kb = KeyboardController()
+
+# Terminal pencere siniflarini ve baslik ipuclarini tani
+# Shift+Insert gereken terminal class'lari (Ctrl+V bilmeyenler)
+_TERMINAL_CLASSES = {
+    "mintty", "putty", "consolewindowclass",
+}
+# Ctrl+V bilmeyen terminallerin baslik ipuclari
+_TERMINAL_TITLE_HINTS = [
+    "mintty", "putty", "command prompt",
+]
+
+
+def _get_foreground_info():
+    """On plandaki pencerenin class, title ve process adini al."""
+    hwnd = ctypes.windll.user32.GetForegroundWindow()
+    if not hwnd:
+        return "", "", "", hwnd
+    cls_buf = ctypes.create_unicode_buffer(256)
+    ctypes.windll.user32.GetClassNameW(hwnd, cls_buf, 256)
+    title_buf = ctypes.create_unicode_buffer(512)
+    ctypes.windll.user32.GetWindowTextW(hwnd, title_buf, 512)
+    # Process adini al (hata olursa bos, yapistirmayi etkilemesin)
+    exe = ""
+    try:
+        pid = wintypes.DWORD()
+        ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value:
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            k32 = ctypes.windll.kernel32
+            k32.OpenProcess.restype = ctypes.c_void_p
+            h = k32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+            if h:
+                buf = ctypes.create_unicode_buffer(260)
+                size = wintypes.DWORD(260)
+                k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
+                k32.CloseHandle(h)
+                exe = buf.value.rsplit("\\", 1)[-1].lower() if buf.value else ""
+    except Exception:
+        pass
+    return cls_buf.value.lower(), title_buf.value.lower(), exe, hwnd
+
+
+# Shift+Insert gereken terminal process adlari
+# NOT: WezTerm Ctrl+V destekler, buraya ekleme
+_TERMINAL_EXES = {
+    "mintty.exe", "putty.exe",
+    "cmd.exe", "powershell.exe", "pwsh.exe",
+}
+
+
+def _is_terminal(cls, title, exe):
+    """Pencere sinifi/baslik/process adina gore terminal mi kontrol et."""
+    if cls in _TERMINAL_CLASSES:
+        return True
+    if exe in _TERMINAL_EXES:
+        return True
+    for hint in _TERMINAL_TITLE_HINTS:
+        if hint in title:
+            return True
+    return False
+
+
+def _paste_ctrl_v():
+    """Ctrl+V - pynput ile (scan code + flag dogru)."""
+    _paste_kb.press(Key.ctrl)
+    _paste_kb.press('v')
+    _paste_kb.release('v')
+    _paste_kb.release(Key.ctrl)
+
+
+def _paste_shift_insert():
+    """Shift+Insert - pynput ile."""
+    _paste_kb.press(Key.shift)
+    _paste_kb.press(Key.insert)
+    _paste_kb.release(Key.insert)
+    _paste_kb.release(Key.shift)
+
+
+PASTE_METHODS = {
+    "auto": "Otomatik (Onerilen)",
+    "ctrl_v": "Ctrl+V (Standart)",
+    "shift_insert": "Shift+Insert (Terminal)",
+}
+
+
+def do_paste(method="auto"):
+    """Yapistir. auto=pencere tipini algilar. Clipboard onceden set edilmis olmali."""
+    cls, title, exe, hwnd = _get_foreground_info()
+    _log(f"[VD] Hedef: cls='{cls}' exe='{exe}' title='{title[:40]}' hwnd={hwnd}")
+
+    is_term = _is_terminal(cls, title, exe) if method == "auto" else (method == "shift_insert")
+    if is_term:
+        _paste_shift_insert()
+        tag = "Shift+Ins"
+    else:
+        _paste_ctrl_v()
+        tag = "Ctrl+V"
+
+    mode = f"auto->{tag}" if method == "auto" else method
+    _log(f"[VD] Yapistirma: {mode}")
 
 # DPI awareness - piksel keskinligi
 try:
@@ -42,6 +160,7 @@ DEFAULT_CONFIG = {
     "button_position": [100, 100],
     "button_size": 56,
     "initial_prompt": "GTRL, RL, AI, ML, DQN, PPO, SAC, TD3, A2C, GPU, CPU, API, LLM, NLP, CNN, RNN, LSTM, GAN, VAE, transformer, epoch, batch, gradient, loss, reward, policy, agent, environment, state, action, observation, GitHub, repo, commit, push, pull, merge, branch, PR, README, open-source, pip, Python, npm, Docker, VSCode, Claude",
+    "paste_method": "auto",
 }
 SAMPLE_RATE = 16000
 MIN_RECORDING_SECONDS = 0.5
@@ -318,7 +437,6 @@ class SpeechToTextApp:
         self.stream = None
         self.model = None
         self.current_language = self.config["language"]
-        self.kb = KeyboardController()
         self.hotkey_hook = None
         self.mouse_listener = None
         self._pulse_job = None
@@ -327,8 +445,16 @@ class SpeechToTextApp:
         self._wave_heights = []
         self._recent_rms = 0.0
 
+        self._tray_icon = None
+        self._model_loading = False
         self._setup_gui()
-        threading.Thread(target=self._load_model, daemon=True).start()
+        self._setup_tray()
+        # Model yuklenmez - ilk kullanımda lazy load
+        self.state = "idle"
+        self._set_pill("idle")
+        self._set_content_color(C_ACCENT_GLOW)
+        self._check_device()
+        self._setup_hotkey()
 
     # --- GUI ---
 
@@ -378,6 +504,69 @@ class SpeechToTextApp:
         self.root.deiconify()
         self.root.update_idletasks()
         make_non_activating(self.root)
+
+    # --- System Tray ---
+
+    def _create_tray_image(self):
+        """16x16 VD ikonu olustur."""
+        sz = 64
+        img = Image.new("RGBA", (sz, sz), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        # Yuvarlak mor arka plan
+        d.ellipse([2, 2, sz - 2, sz - 2], fill=hex_rgb(C_ACCENT) + (255,))
+        # VD harfleri
+        try:
+            from PIL import ImageFont
+            font = ImageFont.truetype("segoeuib.ttf", 28)
+        except Exception:
+            font = ImageFont.load_default()
+        d.text((sz // 2, sz // 2), "VD", fill=(255, 255, 255, 255),
+               font=font, anchor="mm")
+        return img.resize((16, 16), Image.LANCZOS)
+
+    def _setup_tray(self):
+        """Sistem tepsisi ikonu olustur."""
+        icon_img = self._create_tray_image()
+
+        def on_lang_tr():
+            self.root.after(0, lambda: self._lang("tr"))
+
+        def on_lang_en():
+            self.root.after(0, lambda: self._lang("en"))
+
+        def on_mic():
+            self.root.after(0, self._sel_device)
+
+        def on_terms():
+            self.root.after(0, self._edit_terms)
+
+        def on_hotkey():
+            self.root.after(0, self._chg_hotkey)
+
+        def on_startup():
+            self.root.after(0, self._toggle_startup)
+
+        def on_quit():
+            self.root.after(0, self._quit)
+
+        menu = pystray.Menu(
+            pystray.MenuItem("Turkce", on_lang_tr,
+                             checked=lambda _: self.current_language == "tr"),
+            pystray.MenuItem("English", on_lang_en,
+                             checked=lambda _: self.current_language == "en"),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Mikrofon...", on_mic),
+            pystray.MenuItem("Terimler...", on_terms),
+            pystray.MenuItem("Kisayol...", on_hotkey),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Windows ile Baslat", on_startup,
+                             checked=lambda _: self._is_startup_enabled()),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Cikis", on_quit),
+        )
+        self._tray_icon = pystray.Icon("VD", icon_img,
+                                        "VD Speech-to-Text", menu)
+        threading.Thread(target=self._tray_icon.run, daemon=True).start()
 
     def _set_pill(self, name):
         if name in self._pill_imgs:
@@ -444,20 +633,35 @@ class SpeechToTextApp:
 
     def _load_model(self):
         try:
+            device, ctype = "cpu", "int8"
+            model_size = self.config["model_size"]
+            try:
+                import nvidia.cublas
+                import nvidia.cudnn
+                for pkg in (nvidia.cublas, nvidia.cudnn):
+                    bin_dir = str(Path(pkg.__path__[0]) / "bin")
+                    if bin_dir not in os.environ.get("PATH", ""):
+                        os.environ["PATH"] = bin_dir + os.pathsep + \
+                            os.environ.get("PATH", "")
+                device, ctype = "cuda", "float16"
+                model_size = self.config.get("gpu_model_size",
+                                             self.config["model_size"])
+            except ImportError:
+                pass
+            _log(f"[VD] {'GPU' if device == 'cuda' else 'CPU'} modu: "
+                  f"{model_size} ({ctype})")
+
             self.model = WhisperModel(
-                self.config["model_size"], device="cpu",
-                compute_type="int8", cpu_threads=4)
+                model_size, device=device,
+                compute_type=ctype, cpu_threads=4)
             dummy = np.zeros(SAMPLE_RATE, dtype=np.float32)
             list(self.model.transcribe(dummy, language="tr"))
             self.root.after(0, self._on_model_ok)
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Hata", str(e)))
 
-    def _on_model_ok(self):
-        self.state = "idle"
-        self._set_pill("idle")
-        self._set_content_color(C_ACCENT_GLOW)
-
+    def _check_device(self):
+        """Mikrofon secimi (ilk calistirmada)."""
         if self.config["input_device_index"] is None:
             devices = sd.query_devices()
             inputs = [(i, d["name"]) for i, d in enumerate(devices)
@@ -468,7 +672,15 @@ class SpeechToTextApp:
                 self.config["input_device_name"] = sel.selected_name
                 save_config(self.config)
 
-        self._setup_hotkey()
+    def _on_model_ok(self):
+        """Model yuklendi, bekleyen kaydi baslat."""
+        self._model_loading = False
+        self.state = "idle"
+        self._set_pill("idle")
+        self._set_content_color(C_ACCENT_GLOW)
+        _log("[VD] Model hazir")
+        # Kullanici bekliyor, direkt kayda basla
+        self._rec_start()
 
     # --- Hotkey ---
 
@@ -533,6 +745,17 @@ class SpeechToTextApp:
 
     def _toggle(self):
         if self.state == "idle":
+            if self.model is None and not self._model_loading:
+                # Ilk kullanim: model yükle, bitince otomatik kayda basla
+                self._model_loading = True
+                self.state = "loading"
+                self._set_pill("loading")
+                self._set_content_color(C_DIM)
+                _log("[VD] Ilk kullanim - model yukleniyor...")
+                threading.Thread(target=self._load_model, daemon=True).start()
+                return
+            if self._model_loading:
+                return  # zaten yukleniyor, bekle
             self._rec_start()
         elif self.state == "recording":
             self._rec_stop()
@@ -590,6 +813,12 @@ class SpeechToTextApp:
             self._idle_look()
             return
 
+        # Ses boost - peak normalize (kliplenmez)
+        peak = float(np.max(np.abs(audio)))
+        if peak > 0.001:
+            gain = 0.8 / peak
+            audio = audio * gain
+
         self.state = "transcribing"
         self._set_pill("transcribing")
         self._set_content_color(C_TRANS_GLOW)
@@ -598,16 +827,25 @@ class SpeechToTextApp:
 
     def _transcribe(self, audio):
         try:
+            duration = len(audio) / SAMPLE_RATE
+            rms = float(np.sqrt(np.mean(audio ** 2)))
+            peak = float(np.max(np.abs(audio)))
+            _log(f"[VD] Ses suresi: {duration:.1f}s | RMS: {rms:.4f} | Peak: {peak:.4f}")
+            t0 = time.time()
             prompt = self.config.get("initial_prompt", "")
             segs, _ = self.model.transcribe(
                 audio, language=self.current_language,
                 beam_size=self.config["beam_size"], vad_filter=True,
                 vad_parameters=dict(min_silence_duration_ms=500,
                                     speech_pad_ms=200),
-                initial_prompt=prompt or None)
-            text = " ".join(s.text.strip() for s in segs)
+                initial_prompt=prompt or None,
+                word_timestamps=False,
+                condition_on_previous_text=False)
+            text = " ".join(s.text.strip() for s in segs if s.no_speech_prob < 0.6)
+            _log(f"[VD] Transkripsiyon: {time.time()-t0:.1f}s -> {text[:60]}")
             self.root.after(0, self._on_done, text)
-        except Exception:
+        except Exception as e:
+            _log(f"[VD] HATA: {e}")
             self.root.after(0, self._idle_look)
             self.state = "idle"
 
@@ -618,10 +856,7 @@ class SpeechToTextApp:
             self.root.clipboard_append(text.strip())
             self.root.update()
             time.sleep(0.05)
-            self.kb.press(Key.ctrl)
-            self.kb.press("v")
-            self.kb.release("v")
-            self.kb.release(Key.ctrl)
+            do_paste(self.config.get("paste_method", "auto"))
             self._set_pill("success")
             self._set_content_color(C_SUCCESS)
             self.root.after(400, self._idle_look)
@@ -707,6 +942,16 @@ class SpeechToTextApp:
         m.add_command(label="   Terimler...", command=self._edit_terms)
         hk = get_hotkey_display(self.config["hotkey"])
         m.add_command(label=f"   Kisayol: {hk}", command=self._chg_hotkey)
+        # Yapistirma metodu alt menusu
+        pm = tk.Menu(m, tearoff=0, bg=C_SURFACE, fg=C_TEXT,
+                     activebackground=C_ACCENT, activeforeground="white",
+                     font=("Segoe UI", 9), bd=0)
+        cur_pm = self.config.get("paste_method", "auto")
+        for key, label in PASTE_METHODS.items():
+            ck = "\u2713 " if cur_pm == key else "   "
+            pm.add_command(label=f"{ck}{label}",
+                           command=lambda k=key: self._set_paste_method(k))
+        m.add_cascade(label="   Yapistirma", menu=pm)
         m.add_separator()
         st = "\u2713 " if self._is_startup_enabled() else "   "
         m.add_command(label=f"{st}Windows ile Baslat",
@@ -737,6 +982,11 @@ class SpeechToTextApp:
             save_config(self.config)
             self._setup_hotkey()
 
+    def _set_paste_method(self, method):
+        self.config["paste_method"] = method
+        save_config(self.config)
+        _log(f"[VD] Yapistirma: {PASTE_METHODS[method]}")
+
     def _edit_terms(self):
         w = tk.Toplevel(self.root)
         w.title("Terimler")
@@ -758,6 +1008,11 @@ class SpeechToTextApp:
                   cursor="hand2").pack(pady=(0, 8))
 
     def _quit(self):
+        if self._tray_icon:
+            try:
+                self._tray_icon.stop()
+            except Exception:
+                pass
         if self.stream:
             try:
                 self.stream.stop()

@@ -12,3 +12,7 @@ faster_whisper/
 
 # User config (herkes kendi ayarini yapar)
 config.json
+
+# Windows artifacts
+nul
+=*
