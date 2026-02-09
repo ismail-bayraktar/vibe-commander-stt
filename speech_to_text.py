@@ -90,6 +90,36 @@ _TERMINAL_EXES = {
     "cmd.exe", "powershell.exe", "pwsh.exe",
 }
 
+# tmux paste denecek terminal emulatorler
+_TMUX_CANDIDATE_EXES = _TERMINAL_EXES | {
+    "wezterm-gui.exe", "windowsterminal.exe", "alacritty.exe",
+}
+
+CREATE_NO_WINDOW = 0x08000000
+
+
+def _try_wsl_tmux_paste(text):
+    """WSL tmux buffer uzerinden dogrudan yapistir. Basarili ise True."""
+    try:
+        proc = subprocess.run(
+            ["wsl", "tmux", "load-buffer", "-"],
+            input=text.encode("utf-8"),
+            capture_output=True, timeout=2,
+            creationflags=CREATE_NO_WINDOW)
+        if proc.returncode != 0:
+            return False
+        proc2 = subprocess.run(
+            ["wsl", "tmux", "paste-buffer", "-d"],
+            capture_output=True, timeout=2,
+            creationflags=CREATE_NO_WINDOW)
+        if proc2.returncode == 0:
+            _log("[VD] Yapistirma: tmux buffer (WSL)")
+            return True
+        return False
+    except Exception as e:
+        _log(f"[VD] tmux paste basarisiz: {e}")
+        return False
+
 
 def _is_terminal(cls, title, exe):
     """Pencere sinifi/baslik/process adina gore terminal mi kontrol et."""
@@ -126,10 +156,15 @@ PASTE_METHODS = {
 }
 
 
-def do_paste(method="auto"):
+def do_paste(method="auto", text=None):
     """Yapistir. auto=pencere tipini algilar. Clipboard onceden set edilmis olmali."""
     cls, title, exe, hwnd = _get_foreground_info()
     _log(f"[VD] Hedef: cls='{cls}' exe='{exe}' title='{title[:40]}' hwnd={hwnd}")
+
+    # Terminal emulator + tmux: dogrudan tmux buffer ile yapistir
+    if text and exe in _TMUX_CANDIDATE_EXES:
+        if _try_wsl_tmux_paste(text):
+            return
 
     is_term = _is_terminal(cls, title, exe) if method == "auto" else (method == "shift_insert")
     if is_term:
@@ -658,7 +693,19 @@ class SpeechToTextApp:
             list(self.model.transcribe(dummy, language="tr"))
             self.root.after(0, self._on_model_ok)
         except Exception as e:
-            self.root.after(0, lambda: messagebox.showerror("Hata", str(e)))
+            _log(f"[VD] Model yukleme HATASI: {e}")
+            self.root.after(0, lambda: self._on_model_fail(e))
+
+    def _on_model_fail(self, error):
+        """Model yuklenemedi - state'i resetle, tekrar denenebilsin."""
+        self._model_loading = False
+        self.model = None
+        self.state = "idle"
+        self._set_pill("idle")
+        self._set_content_color(C_ACCENT_GLOW)
+        messagebox.showerror("Model Hatasi",
+                             f"Model yuklenemedi:\n{error}\n\n"
+                             "Tekrar denemek icin tiklayin.")
 
     def _check_device(self):
         """Mikrofon secimi (ilk calistirmada)."""
@@ -772,14 +819,32 @@ class SpeechToTextApp:
         self._update_wave_bars()
         self._start_pulse()
 
+        dev_idx = self.config["input_device_index"]
         try:
             self.stream = sd.InputStream(
                 samplerate=SAMPLE_RATE, channels=1, dtype="float32",
-                callback=self._audio_cb,
-                device=self.config["input_device_index"])
+                callback=self._audio_cb, device=dev_idx)
             self.stream.start()
-        except Exception:
+        except Exception as e:
+            _log(f"[VD] Mikrofon HATASI (device={dev_idx}): {e}")
+            # Kayitli cihaz acilmadi - default mikrofona fallback
+            if dev_idx is not None:
+                _log("[VD] Default mikrofona geciliyor...")
+                try:
+                    self.stream = sd.InputStream(
+                        samplerate=SAMPLE_RATE, channels=1, dtype="float32",
+                        callback=self._audio_cb, device=None)
+                    self.stream.start()
+                    self.config["input_device_index"] = None
+                    self.config["input_device_name"] = "Varsayilan"
+                    save_config(self.config)
+                    _log("[VD] Default mikrofon OK")
+                    return
+                except Exception as e2:
+                    _log(f"[VD] Default mikrofon da HATALI: {e2}")
             self.state = "idle"
+            self._stop_pulse()
+            self._stop_wave()
             self._show_wave_bars(False)
             self._set_content_visible(True)
             self._idle_look()
@@ -856,7 +921,7 @@ class SpeechToTextApp:
             self.root.clipboard_append(text.strip())
             self.root.update()
             time.sleep(0.05)
-            do_paste(self.config.get("paste_method", "auto"))
+            do_paste(self.config.get("paste_method", "auto"), text=text.strip())
             self._set_pill("success")
             self._set_content_color(C_SUCCESS)
             self.root.after(400, self._idle_look)

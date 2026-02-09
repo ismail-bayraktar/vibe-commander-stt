@@ -26,7 +26,7 @@ Mouse yan tusuna bas &rarr; konus &rarr; birak &rarr; metin aninda yapistir.
 - **GPU hizlandirmali** - NVIDIA GPU ile large-v3 modeli, ~1 saniyede transkripsiyon
 - **Tamamen offline** - internet gerektirmez (model bir kere indirilir)
 - **Lazy load** - Windows ile baslar ama modeli ilk kullanima kadar yuklemez, sistemi yormaz
-- **Akilli yapistirma** - aktif pencereyi otomatik algilar, terminallere Shift+Insert, GUI'ye Ctrl+V
+- **Akilli yapistirma** - aktif pencereyi otomatik algilar, tmux destegi, terminallere Shift+Insert, GUI'ye Ctrl+V
 - **Turkce + Ingilizce** - sag tik ile degistir
 - **Teknik terimler** - AI, GPU, GitHub, transformer gibi kelimeleri dogru tanir
 
@@ -109,7 +109,7 @@ Baslangic (Windows boot)          Ilk kullanim
 | **AI Model** | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) - GPU: large-v3 float16, CPU: small int8 |
 | **Arayuz** | Glassmorphism pill (72x28px) + sistem tepsisi ikonu |
 | **Spektrum** | Kayit sirasinda canli ses dalgasi gorsellestirme |
-| **Yapistirma** | Akilli pencere algilama - terminal/GUI otomatik ayirt eder |
+| **Yapistirma** | Akilli pencere algilama - tmux (WSL), terminal, GUI otomatik ayirt eder |
 | **Ses isleme** | Peak normalizasyon + VAD filtresi + hallusinasyon filtresi |
 | **Lazy load** | Model ilk kullanima kadar yuklenmez, Windows bootu etkilenmez |
 | **Otostart** | Windows baslangicina ekle/cikar (sag tik menuden) |
@@ -135,7 +135,7 @@ Ilk calistirmada `config.json` otomatik olusur:
 |---|---|
 | `model_size` | CPU modeli (tiny/base/small/medium) |
 | `gpu_model_size` | GPU modeli (large-v3 onerilen) |
-| `paste_method` | auto / ctrl_v / shift_insert |
+| `paste_method` | auto / ctrl_v / shift_insert (auto: tmux > terminal > GUI sirasina bakar) |
 | `initial_prompt` | Teknik terimler ve dil ipucu |
 
 ### Model Secimi
